@@ -11,8 +11,8 @@ los algoritmos de búsqueda y el notebook.
 Contenido
 ---------
 1. Elementos y tabla de ventajas (agua > fuego > planta > agua).
-2. Constantes de juego que usa el cálculo de poder (estrellas, sinergias).
-3. Funciones económicas (interés / bonificación por ahorro).
+2. Constantes de combate: poder por nivel, combinación, sinergia y ventaja.
+3. Economía: bonificación por ahorro.
 4. Generador de números aleatorios reproducible.
 5. Herramientas de medición para los algoritmos (cronómetro y métricas).
 6. Historial de estados para reproducir / retroceder una partida.
@@ -53,12 +53,15 @@ VENCE_A: Dict[Elemento, Elemento] = {
 }
 
 
-def ventaja_elemental(atacante: Elemento, defensor: Elemento) -> int:
+def ventaja_elemental(atacante: Optional[Elemento],
+                      defensor: Optional[Elemento]) -> int:
     """Devuelve +1 si ``atacante`` vence a ``defensor``, -1 si pierde y 0 si
-    son del mismo elemento.
+    son del mismo elemento (o alguno no tiene tipo).
 
-    Se usa para calcular el factor de ventaja de un equipo frente a otro.
+    Se usa para decidir si un equipo recibe el multiplicador x2.
     """
+    if atacante is None or defensor is None:
+        return 0
     if VENCE_A[atacante] == defensor:
         return 1
     if VENCE_A[defensor] == atacante:
@@ -67,46 +70,50 @@ def ventaja_elemental(atacante: Elemento, defensor: Elemento) -> int:
 
 
 # ---------------------------------------------------------------------------
-# 2. Constantes de combate
+# 2. Constantes de combate (documento de reglas, secciones 7 y 8)
 # ---------------------------------------------------------------------------
-#: Multiplicador de poder según el nivel (estrellas) de la unidad.
-#: Tres unidades iguales de nivel n se combinan en una de nivel n+1.
-MULT_ESTRELLAS: Dict[int, float] = {1: 1.0, 2: 2.2, 3: 4.5}
-ESTRELLAS_MAX: int = 3
-COPIAS_PARA_COMBINAR: int = 3
+#: Poder base según el coste de la unidad y su nivel (tablas 7.1 y 7.2).
+PODER_POR_NIVEL: Dict[int, Dict[int, float]] = {
+    1: {1: 1.0, 2: 2.25, 3: 4.0},   # unidades de coste 1
+    2: {1: 2.0, 2: 3.5, 3: 5.5},    # unidades de coste 2
+}
+NIVEL_MAX: int = 3
 
-#: Sinergias elementales: (mínimo de unidades del mismo elemento, bonificación).
-#: La bonificación se aplica sobre el poder de las unidades de ese elemento.
-#: Se toma el umbral más alto alcanzado.
-SINERGIAS: List[tuple] = [(2, 0.10), (3, 0.20), (4, 0.35)]
+#: Copias iguales (mismo nombre y nivel) necesarias para subir de nivel.
+#: El documento indica 2 para las de coste 1; se usa la misma regla para las
+#: de coste 2 (punto pendiente 5 de la sección 12).
+COPIAS_PARA_COMBINAR: int = 2
 
-#: Peso del factor de ventaja elemental en el poder total.
-#: factor = 1 + PESO_VENTAJA * ventaja_normalizada, con ventaja en [-1, 1].
-PESO_VENTAJA: float = 0.25
+#: Sinergia por variedad (sección 8.2): número de fichas DIFERENTES de un
+#: mismo elemento en el tablero -> multiplicador S_i de cada ficha de ese
+#: elemento. Menos de 2 fichas diferentes -> 1.0.
+SINERGIA_VARIEDAD: Dict[int, float] = {2: 1.2, 3: 1.5}
+
+#: Ventaja elemental (sección 8.1): multiplicador E del poder total.
+MULT_VENTAJA: float = 2.0
 
 
-def bono_sinergia(cantidad: int) -> float:
-    """Bonificación (fracción) que otorga tener ``cantidad`` unidades de un
-    mismo elemento desplegadas en el tablero."""
-    bono = 0.0
-    for minimo, valor in SINERGIAS:
-        if cantidad >= minimo:
-            bono = valor
-    return bono
+def multiplicador_sinergia(diferentes: int) -> float:
+    """S_i para una ficha cuyo elemento tiene ``diferentes`` fichas distintas
+    desplegadas: 1.5 con 3 o más, 1.2 con 2, 1.0 en otro caso."""
+    mult = 1.0
+    for minimo, valor in sorted(SINERGIA_VARIEDAD.items()):
+        if diferentes >= minimo:
+            mult = valor
+    return mult
 
 
 # ---------------------------------------------------------------------------
-# 3. Economía
+# 3. Economía (sección 5.1)
 # ---------------------------------------------------------------------------
-def calcular_interes(oro: int, paso: int = 10, tope: int = 3) -> int:
-    """Bonificación por ahorro: +1 de oro por cada ``paso`` de oro guardado,
-    hasta un máximo de ``tope``.
+def calcular_bono_ahorro(oro: int, umbral: int = 6, bono: int = 1) -> int:
+    """Bonificación por ahorro B: ``bono`` de oro si se tienen al menos
+    ``umbral`` monedas, 0 en otro caso.
 
-    Ejemplo: con 27 de oro y paso=10 se obtienen 2 de interés.
+    Se evalúa una vez por ronda, después de sumar el ingreso pasivo y antes
+    de las compras: G_turno = G_actual + 3 + B.
     """
-    if paso <= 0:
-        return 0
-    return min(tope, max(0, oro) // paso)
+    return bono if oro >= umbral else 0
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +276,7 @@ def oscurecer(color: tuple, factor: float = 0.3) -> tuple:
 
 def formatear_poder(valor: float) -> str:
     """Formato corto para mostrar poder en pantalla."""
-    return f"{valor:.1f}"
+    return f"{valor:.2f}".rstrip("0").rstrip(".")
 
 
 # ---------------------------------------------------------------------------

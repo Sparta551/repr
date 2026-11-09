@@ -21,7 +21,6 @@ Mouse (modo manual, jugador de abajo):
     clic en una carta de la tienda ..... comprar
     clic en una unidad de la banca ..... desplegar en el tablero
     clic en una unidad del tablero ..... devolver a la banca
-    clic derecho en una unidad ......... vender
     botones Renovar / Combinar / Terminar turno
 
 Teclado:
@@ -56,7 +55,6 @@ from agentes import FABRICAS
 from utils import (
     COLOR_ELEMENTO,
     COLORES,
-    AgenteAleatorio,
     Elemento,
     Historial,
     aclarar,
@@ -75,8 +73,7 @@ DURACION_COMBATE = 1.6                     # segundos de la animación de combat
 
 #: Agentes disponibles (botones "Agente J0/J1" los recorren en este orden).
 #: Los algoritmos están en agentes.py (FABRICAS).
-AGENTES: Dict[str, Callable[[], object]] = dict(FABRICAS)
-AGENTES["Aleatorio"] = lambda: AgenteAleatorio()
+AGENTES: Dict[str, Callable[[], object]] = dict(FABRICAS)   # Heurística, Backtracking, Q-learning
 
 # Geometría de los paneles
 PANEL_X, PANEL_W, PANEL_H = 20, 860, 285
@@ -191,7 +188,7 @@ class MagicChessGUI:
         self.semilla = semilla
         self.dificultad = "normal"
         self.modo = "auto"                       # "auto" | "manual"
-        self.nombres_agentes = ["Reglas", "A*h2"]
+        self.nombres_agentes = ["Heurística", "Backtracking"]
         self.reproduciendo = False
         self.indice_velocidad = 1
         self.acumulador = 0.0
@@ -285,7 +282,7 @@ class MagicChessGUI:
             if a.tipo == TipoAccion.COMBINAR:
                 self._accion_humana(a)
                 return
-        self.mensaje = "No tienes 3 copias iguales para combinar."
+        self.mensaje = "Necesitas 2 fichas iguales en la banca para combinar."
 
     def _terminar(self) -> None:
         self._accion_humana(Accion(TipoAccion.TERMINAR))
@@ -376,7 +373,7 @@ class MagicChessGUI:
                 }
                 if ev.key in teclas:
                     teclas[ev.key]()
-            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button in (1, 3):
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 self._clic(ev.pos, ev.button)
         return True
 
@@ -388,9 +385,7 @@ class MagicChessGUI:
         for rect, zona, jugador, idx in self.zonas_click:
             if jugador != 0 or not rect.collidepoint(pos):
                 continue
-            if boton_mouse == 3 and zona in ("banca", "tablero"):
-                self._accion_humana(Accion(TipoAccion.VENDER, (zona, idx)))
-            elif zona == "tienda":
+            if zona == "tienda":
                 self._accion_humana(Accion(TipoAccion.COMPRAR, idx))
             elif zona == "banca":
                 self._accion_humana(Accion(TipoAccion.A_TABLERO, idx))
@@ -488,7 +483,9 @@ class MagicChessGUI:
             dibujar_corazon(sup, (x + v * 22, y0 + 21), 18, col)
         x += snap["config"]["vidas_iniciales"] * 22 + 16
         dibujar_moneda(sup, (x, y0 + 20), 9)
-        self._texto(f"{p['oro']}  (+{snap['interes'][j]} interés)", (x + 14, y0 + 11))
+        bono = snap["bono_proximo"][j]
+        self._texto(f"{p['oro']} (+{snap['config']['ingreso_pasivo']}"
+                    f"{'+1' if bono else ''})", (x + 14, y0 + 11))
         poder = snap["poder"][j]
         self._texto(f"Poder: {formatear_poder(poder['total'])}", (x + 170, y0 + 11),
                     self.f_negrita)
@@ -503,11 +500,11 @@ class MagicChessGUI:
         # Tablero
         self._texto("Tablero", (PANEL_X + 16, y0 + 38), self.f_peque, COLORES["texto_suave"])
         cap = snap["capacidad_tablero"]
-        for i in range(6):
+        for i in range(snap["config"]["tablero_maximo"]):
             rect = pygame.Rect(PANEL_X + 16 + i * (CARTA_TAB[0] + SEP), y0 + 56, *CARTA_TAB)
             if i < len(p["tablero"]):
                 u = p["tablero"][i]
-                self._dibujar_unidad(rect, u, (u["nombre"], u["estrellas"]) in combinables)
+                self._dibujar_unidad(rect, u, False)
                 self.zonas_click.append((rect, "tablero", j, i))
             else:
                 col = COLORES["casilla"] if i < cap else COLORES["casilla_bloqueada"]
@@ -523,20 +520,36 @@ class MagicChessGUI:
                                *CARTA_BANCA)
             if i < len(p["banca"]):
                 u = p["banca"][i]
-                self._dibujar_unidad(rect, u, (u["nombre"], u["estrellas"]) in combinables)
+                self._dibujar_unidad(rect, u, (u["nombre"], u["nivel"]) in combinables)
                 self.zonas_click.append((rect, "banca", j, i))
             else:
                 pygame.draw.rect(sup, COLORES["casilla"], rect, border_radius=8)
 
         # Sinergias activas
-        sx = PANEL_X + 16 + 6 * (CARTA_BANCA[0] + SEP) + 8
-        self._texto("Sinergias", (sx, y0 + 164), self.f_peque, COLORES["texto_suave"])
-        for k, (elem, n) in enumerate(poder["sinergias_activas"].items()):
+        sx = PANEL_X + 16 + snap["config"]["tamano_banca"] * (CARTA_BANCA[0] + SEP) + 16
+        self._texto("Sinergias (fichas diferentes)", (sx, y0 + 164), self.f_peque,
+                    COLORES["texto_suave"])
+        for k, (elem, (n, s)) in enumerate(poder["sinergias"].items()):
             e = Elemento(elem)
             pygame.draw.rect(sup, oscurecer(COLOR_ELEMENTO[e], 0.2),
-                             (sx, y0 + 184 + k * 28, 120, 24), border_radius=5)
+                             (sx, y0 + 184 + k * 28, 150, 24), border_radius=5)
             dibujar_icono_elemento(sup, e, (sx + 14, y0 + 196 + k * 28), 16)
-            self._texto(f"{elem} x{n}", (sx + 28, y0 + 188 + k * 28), self.f_peque)
+            self._texto(f"{elem} {n} dif. x{s:g}", (sx + 28, y0 + 188 + k * 28),
+                        self.f_peque)
+        tx = sx + 170
+        self._texto("Tipo del equipo", (tx, y0 + 164), self.f_peque, COLORES["texto_suave"])
+        if poder["tipo"]:
+            e = Elemento(poder["tipo"])
+            pygame.draw.rect(sup, oscurecer(COLOR_ELEMENTO[e], 0.2),
+                             (tx, y0 + 184, 150, 24), border_radius=5)
+            dibujar_icono_elemento(sup, e, (tx + 14, y0 + 196), 16)
+            self._texto(poder["tipo"], (tx + 28, y0 + 188), self.f_peque)
+        else:
+            self._texto("sin tipo", (tx, y0 + 188), self.f_peque, COLORES["texto_suave"])
+        if poder["mult_ventaja"] > 1:
+            pygame.draw.rect(sup, COLORES["oro"], (tx, y0 + 212, 150, 24), border_radius=5)
+            self._texto("VENTAJA x2", (tx + 75, y0 + 224), self.f_negrita,
+                        COLORES["fondo"], centro=True)
 
         # Tienda
         self._texto("Tienda", (TIENDA_X, y0 + 38), self.f_peque, COLORES["texto_suave"])
@@ -544,27 +557,27 @@ class MagicChessGUI:
             rect = pygame.Rect(TIENDA_X, y0 + 56 + i * 64, 190, 56)
             if nombre is None:
                 pygame.draw.rect(sup, COLORES["casilla_bloqueada"], rect, border_radius=8)
-                self._texto("vendida", rect.center, self.f_peque,
+                self._texto("comprada", rect.center, self.f_peque,
                             COLORES["texto_suave"], centro=True)
                 continue
             plantilla = CATALOGO[nombre]
-            alcanza = plantilla.costo <= p["oro"]
+            alcanza = plantilla.coste <= p["oro"]
             base = COLOR_ELEMENTO[plantilla.elemento]
             pygame.draw.rect(sup, base if alcanza else oscurecer(base, 0.55), rect,
                              border_radius=8)
             dibujar_icono_elemento(sup, plantilla.elemento, (rect.x + 20, rect.centery), 22)
             self._texto(nombre, (rect.x + 40, rect.y + 8), self.f_negrita)
-            self._texto(f"poder {plantilla.poder_base:.0f}", (rect.x + 40, rect.y + 30),
+            self._texto(f"poder {formatear_poder(plantilla.poder(1))}", (rect.x + 40, rect.y + 30),
                         self.f_peque)
             dibujar_moneda(sup, (rect.right - 34, rect.centery), 8)
-            self._texto(str(plantilla.costo), (rect.right - 22, rect.centery - 9),
+            self._texto(str(plantilla.coste), (rect.right - 22, rect.centery - 9),
                         self.f_negrita)
             self.zonas_click.append((rect, "tienda", j, i))
         if j == 1:
-            self._texto(f"Renovar: {snap['config']['costo_renovar']} oro",
+            self._texto(f"Renovar: {snap['config']['coste_renovar']} oro",
                         (TIENDA_X, y0 + 254), self.f_peque, COLORES["texto_suave"])
         else:
-            self.btn_renovar.texto = f"Renovar ({snap['config']['costo_renovar']} oro)"
+            self.btn_renovar.texto = f"Renovar ({snap['config']['coste_renovar']} oro)"
 
     def _dibujar_unidad(self, rect: pygame.Rect, u: dict, combinable: bool) -> None:
         sup = self.pantalla
@@ -576,7 +589,7 @@ class MagicChessGUI:
             pygame.draw.rect(sup, COLORES["oro"], rect, 3, border_radius=8)
         dibujar_icono_elemento(sup, e, (rect.centerx, rect.y + rect.h * 0.36),
                                int(rect.h * 0.32))
-        for s in range(u["estrellas"]):
+        for s in range(u["nivel"]):
             dibujar_estrella(sup, (rect.x + 14 + s * 15, rect.y + 13), 6, COLORES["oro"])
         self._texto(u["nombre"], (rect.centerx, rect.bottom - 28), self.f_peque,
                     centro=True)
@@ -602,16 +615,16 @@ class MagicChessGUI:
             d = comb["desglose"][j]
             y = caja.y + 70 + k * 110
             self._texto(f"J{j}", (caja.x + 14, y), self.f_negrita, COLORES[f"jugador{j}"])
-            ancho = int((caja.w - 80) * d["total"] / maximo)
-            pygame.draw.rect(sup, COLORES["casilla"], (caja.x + 50, y, caja.w - 80, 18),
+            ancho = int((caja.w - 100) * d["total"] / maximo)
+            pygame.draw.rect(sup, COLORES["casilla"], (caja.x + 50, y, caja.w - 100, 18),
                              border_radius=4)
             pygame.draw.rect(sup, COLORES[f"jugador{j}"], (caja.x + 50, y, ancho, 18),
                              border_radius=4)
             self._texto(formatear_poder(d["total"]), (caja.right - 26, y + 9),
                         self.f_peque, centro=True)
             lineas = [
-                f"base {d['base']:.1f}  +  sinergia {d['sinergia']:.1f}",
-                f"x ventaja {d['factor_ventaja']:.3f}   x ruido {d['ruido']:.3f}",
+                f"sum Pi = {d['base']:g}   sum Pi*Si = {d['con_sinergia']:g}",
+                f"tipo: {d['tipo'] or '-'}   E = x{d['mult_ventaja']:g}",
             ]
             for n, linea in enumerate(lineas):
                 self._texto(linea, (caja.x + 50, y + 26 + n * 18), self.f_peque,
@@ -620,7 +633,7 @@ class MagicChessGUI:
                 col = COLOR_ELEMENTO[Elemento(u["elemento"])]
                 pygame.draw.rect(sup, col, (caja.x + 50 + n * 30, y + 66, 24, 18),
                                  border_radius=4)
-                self._texto(str(u["estrellas"]), (caja.x + 62 + n * 30, y + 75),
+                self._texto(str(u["nivel"]), (caja.x + 62 + n * 30, y + 75),
                             self.f_peque, centro=True)
 
     def _dibujar_registro(self, snap) -> None:
@@ -723,12 +736,12 @@ class MagicChessGUI:
             if zona == "tienda":
                 pl = CATALOGO[p["tienda"][idx]]
                 lineas = [pl.nombre, f"Elemento: {pl.elemento.value}",
-                          f"Costo: {pl.costo}  Poder: {pl.poder_base:.0f}"]
+                          f"Coste: {pl.coste}  Poder nv1: {formatear_poder(pl.poder(1))}"]
             else:
                 u = p[zona][idx]
-                lineas = [f"{u['nombre']} {'*' * u['estrellas']}",
+                lineas = [f"{u['nombre']} nivel {u['nivel']}",
                           f"Elemento: {u['elemento']}",
-                          f"Poder: {u['poder']:.1f}  Costo: {u['costo']}"]
+                          f"Poder: {formatear_poder(u['poder'])}  Coste: {u['coste']}"]
             w = 190
             x = min(mouse[0] + 14, ANCHO - w - 4)
             y = min(mouse[1] + 14, ALTO - 70)

@@ -2,89 +2,59 @@
 agentes.py
 ==========
 
-Algoritmos y agentes para *Magic Chess*.
+Los tres algoritmos del proyecto *Magic Chess*:
 
-Idea central: el problema de planificación de un turno
-------------------------------------------------------
-Una partida completa es un juego estocástico y adversario: no existe una
-"solución" fija. Lo que sí se puede resolver de forma ÓPTIMA es la fase de
-preparación de cada ronda, modelada como un problema de búsqueda:
+1. **Heurística** (``AgenteHeuristico``) - informado. Estrategia basada en
+   reglas ordenadas por prioridad, que usa el cálculo de poder como función
+   heurística para elegir qué comprar, desplegar o combinar.
+2. **Backtracking** (``AgenteBacktracking``) - no informado. Recorre en
+   profundidad, haciendo y deshaciendo acciones, TODAS las secuencias de
+   decisiones posibles del turno y se queda con la de mayor utilidad. Es
+   completo y encuentra el plan óptimo del turno.
+3. **Q-learning** (``AgenteQLearning``) - aprendizaje por refuerzo. Aprende,
+   jugando partidas simuladas, qué estilo de juego conviene en cada
+   situación (estado simplificado).
 
-* **Estado** (``EstadoTurno``): oro, unidades en banca, unidades en tablero y
-  opciones de la tienda del jugador.
-* **Acciones**: comprar(nombre), combinar(nombre, nivel), a_tablero(unidad),
-  a_banca(unidad) y terminar. Se excluyen RENOVAR (su resultado es aleatorio:
-  el agente no puede saber qué saldrá) y VENDER (ver nota en
-  ``ProblemaTurno``); esas decisiones las toma una política externa.
-* **Transición**: determinista (mismas reglas del ambiente).
-* **Objetivo**: terminar el turno en el estado ``s`` que maximiza la función
-  de utilidad
+El problema de un turno
+-----------------------
+La partida completa es aleatoria (tienda) y adversaria, así que no tiene una
+solución única. Lo que sí se puede resolver de forma óptima es la fase de
+preparación de cada ronda:
 
-      V(s) = P(s) + w_interes * interes(oro) + w_oro * oro + w_banca * B(s)
+* **Estado** (``ModeloTurno``): oro, fichas en banca, fichas en tablero y
+  tienda del jugador.
+* **Acciones**: comprar(nombre), combinar(nombre, nivel), a_tablero(ficha),
+  a_banca(ficha). RENOVAR queda fuera de la búsqueda porque su resultado es
+  aleatorio; se decide con una regla aparte.
+* **Utilidad** del estado en que se termina el turno::
 
-  donde P(s) es el poder del tablero contra el tablero actual del rival
-  (``MagicChessEnv.poder_equipo``) y B(s) el poder guardado en la banca
-  (potencial para rondas futuras). Los pesos están en ``PesosEvaluacion``.
+      V(s) = P(s) + w_bono * B(oro + 3) + w_oro * oro + w_banca * banca(s)
 
-Como cualquier estado puede ser final (siempre se puede "terminar"), la
-solución óptima es el camino hacia el estado alcanzable de mayor V.
+  P(s): poder del tablero contra el tablero actual del rival (reglas del
+  ambiente). B: bonificación por ahorro que se recibirá la próxima ronda.
+  banca(s): poder base guardado en la banca (potencial futuro).
 
-Algoritmos de búsqueda (todos devuelven ``ResultadoBusqueda`` con métricas)
---------------------------------------------------------------------------
-1. ``busqueda_anchura`` (BFS) - no informada. Explora todos los estados
-   alcanzables por niveles. Completa y óptima respecto a V (si no se corta
-   por el límite de nodos). Tiempo y memoria O(b^d).
-2. ``busqueda_profundidad_limitada`` (DLS) - no informada. Profundidad
-   máxima L. Memoria O(b*L). Óptima solo si el mejor estado está a
-   profundidad <= L.
-3. ``busqueda_a_estrella`` (A* para maximización / Branch & Bound) -
-   informada. f(n) = g(n) + h(n), con g(n) = V(n) y h(n) una estimación
-   OPTIMISTA de cuánto puede mejorar V desde n. Como h nunca subestima
-   (admisible), cuando la mayor f de la frontera es <= al mejor V encontrado,
-   la solución es óptima y se puede parar sin explorar todo.
-   Dos heurísticas:
-     - ``h1`` "por unidades": supone para todo el equipo la mejor ventaja
-       elemental posible y la sinergia máxima de cada elemento.
-     - ``h2`` "relajada": resuelve exactamente un problema relajado (las
-       fichas se pueden reubicar gratis) para cada combinación de compras.
-       Más informada -> muchos menos nodos expandidos.
-4. ``busqueda_voraz`` - informada, ascenso de colina con anticipación de 2
-   acciones. Muy rápida, sin garantía de optimalidad.
-
-Agentes (método ``actuar(env, jugador) -> Accion``)
----------------------------------------------------
-* ``AgenteBusqueda``: planifica el turno con uno de los algoritmos anteriores
-  y ejecuta el plan acción por acción.
-* ``AgenteReglas``: estrategia heurística basada en reglas (primera etapa de
-  la propuesta). Sirve como referencia.
-* ``AgenteQLearning``: aprendizaje por refuerzo tabular. Con un estado
-  simplificado elige, en cada ronda, un *perfil* de juego (agresivo,
-  equilibrado, ahorro, buscar combinaciones) que ejecuta ``AgenteReglas``.
-
-Experimentos
-------------
-* ``comparar_busquedas(env, jugador)``: corre todos los algoritmos sobre la
-  MISMA instancia y devuelve sus métricas (incluye si fueron óptimos).
-* ``torneo(fabrica_a, fabrica_b, partidas)``: partidas completas entre dos
-  agentes (porcentaje de victorias, rondas, vidas, uso del oro).
+Comparación y experimentos
+--------------------------
+* ``comparar_algoritmos(env, jugador)``: los tres algoritmos deciden el MISMO
+  turno; se comparan utilidad alcanzada, optimalidad, tiempo, nodos, etc.
+* ``torneo(fabrica_a, fabrica_b, partidas)``: partidas completas.
 * ``entrenar_qlearning(...)``: entrena y guarda la tabla Q.
 
 Desde consola::
 
-    python agentes.py comparar        # tabla de algoritmos en una instancia
-    python agentes.py torneo          # todos contra AgenteReglas
-    python agentes.py entrenar 3000   # entrena Q-learning y guarda qtabla.json
+    python agentes.py comparar
+    python agentes.py torneo 50
+    python agentes.py entrenar 3000
 """
 
 from __future__ import annotations
 
-import heapq
-from itertools import combinations
 import json
 import os
 import sys
-from collections import Counter, deque
-from dataclasses import dataclass, field, replace
+from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from magic_chess_env import (
@@ -95,88 +65,41 @@ from magic_chess_env import (
     MagicChessEnv,
     TipoAccion,
     Unidad,
+    calcular_poder,
 )
 from utils import (
     COPIAS_PARA_COMBINAR,
-    ESTRELLAS_MAX,
-    MULT_ESTRELLAS,
-    PESO_VENTAJA,
-    AgenteAleatorio,
+    NIVEL_MAX,
     Cronometro,
     MetricasBusqueda,
-    bono_sinergia,
-    calcular_interes,
+    calcular_bono_ahorro,
     crear_rng,
-    ventaja_elemental,
 )
 
-Clave = Tuple[str, int]          # (nombre, estrellas) identifica una unidad
-AccionPlan = Tuple[str, Any]     # acción del modelo de planificación
+Clave = Tuple[str, int]          # (nombre, nivel)
+AccionPlan = Tuple[str, Any]     # acción del modelo del turno
 
-MAX_TRAZA = 400                  # eventos de búsqueda guardados para la GUI
+MAX_TRAZA = 400                  # eventos guardados para animar la búsqueda
 
 
 # ===========================================================================
-# 1. Modelo de planificación de un turno
+# 1. Modelo del turno
 # ===========================================================================
 @dataclass(frozen=True)
 class PesosEvaluacion:
-    """Pesos de la función de utilidad V(s).
+    """Pesos de la utilidad V(s)."""
 
-    * interes: valor de cada punto de interés que generará el oro guardado.
-    * oro: valor de cada moneda guardada (flexibilidad futura).
-    * banca: fracción del poder de la banca que se valora (potencial futuro).
-    """
-
-    interes: float = 2.0
-    oro: float = 0.15
-    banca: float = 0.25
+    bono: float = 1.0      # valor de asegurar la bonificación por ahorro
+    oro: float = 0.3       # valor de cada moneda guardada
+    banca: float = 0.3     # fracción del poder de la banca que se valora
 
 
-@dataclass(frozen=True)
-class EstadoTurno:
-    """Estado del problema de planificación (inmutable y *hashable*).
+class ModeloTurno:
+    """Copia ligera y MUTABLE del turno de ``jugador``.
 
-    banca y tablero se guardan ORDENADOS: dos estados con las mismas
-    unidades en distinto orden son equivalentes, así se evita explorarlos
-    dos veces.
-    """
-
-    oro: int
-    banca: Tuple[Clave, ...]
-    tablero: Tuple[Clave, ...]
-    tienda: Tuple[Optional[str], ...]
-
-    def clave(self) -> tuple:
-        return (self.oro, self.banca, self.tablero,
-                tuple(sorted(t for t in self.tienda if t)))
-
-    def __str__(self) -> str:
-        def f(us):
-            return ",".join(f"{n}{'*' * e}" for n, e in us) or "-"
-        return f"oro={self.oro} tab=[{f(self.tablero)}] banca=[{f(self.banca)}]"
-
-
-def _quitar(tupla: Tuple, elem) -> Tuple:
-    lista = list(tupla)
-    lista.remove(elem)
-    return tuple(lista)
-
-
-def _agregar(tupla: Tuple, elem) -> Tuple:
-    return tuple(sorted(tupla + (elem,)))
-
-
-class ProblemaTurno:
-    """Formulación del turno de ``jugador`` como problema de búsqueda.
-
-    Se construye a partir del ambiente real pero NO lo modifica: las
-    transiciones se calculan sobre ``EstadoTurno`` (mucho más liviano que
-    clonar el ambiente entero) replicando sus reglas.
-
-    Nota sobre VENDER: sin vender, el oro nunca aumenta durante el turno.
-    Esa propiedad hace que la cota optimista del término económico sea
-    simplemente el valor actual, lo que mantiene admisibles las heurísticas.
+    Permite aplicar una acción y luego deshacerla (``aplicar`` devuelve la
+    información necesaria para ``deshacer``), que es la operación básica del
+    backtracking. No modifica el ambiente real.
     """
 
     def __init__(self, env: MagicChessEnv, jugador: int,
@@ -188,236 +111,109 @@ class ProblemaTurno:
         cfg = env.config
         self.cap_tablero = env.capacidad_tablero()
         self.tam_banca = cfg.tamano_banca
-        self.paso_interes = cfg.paso_interes
-        self.tope_interes = cfg.tope_interes
-        self.tablero_rival = [Unidad(0, u.nombre, u.estrellas)
+        self.ingreso = cfg.ingreso_pasivo
+        self.umbral = cfg.umbral_ahorro
+        self.bono = cfg.bono_ahorro
+        self.tablero_rival = [Unidad(0, u.nombre, u.nivel)
                               for u in env.jugadores[env.rival(jugador)].tablero]
-        self.estado_inicial = EstadoTurno(
-            oro=j.oro,
-            banca=tuple(sorted(u.clave() for u in j.banca)),
-            tablero=tuple(sorted(u.clave() for u in j.tablero)),
-            tienda=tuple(j.tienda),
-        )
-        self._cache_valor: Dict[tuple, float] = {}
+        # estado mutable
+        self.oro = j.oro
+        self.banca: List[Clave] = [u.clave() for u in j.banca]
+        self.tablero: List[Clave] = [u.clave() for u in j.tablero]
+        self.tienda: List[Optional[str]] = list(j.tienda)
         self._cache_poder: Dict[tuple, float] = {}
-        self._cache_cota: Dict[tuple, float] = {}
-        self._cache_reparto: Dict[tuple, float] = {}
-        # ventaja promedio de cada elemento contra el tablero rival (para h2)
-        self._ventaja_elem = {}
-        for p in CATALOGO.values():
-            if self.tablero_rival:
-                self._ventaja_elem[p.elemento] = sum(
-                    ventaja_elemental(p.elemento, r.elemento)
-                    for r in self.tablero_rival) / len(self.tablero_rival)
-            else:
-                self._ventaja_elem[p.elemento] = 0.0
 
-    # -------------------------- acciones -----------------------------
-    def acciones(self, s: EstadoTurno) -> List[AccionPlan]:
-        """Acciones aplicables en ``s`` (sin duplicados por unidades
-        idénticas). TERMINAR no se incluye: todo estado es candidato final."""
+    # ----------------------------- estado ------------------------------
+    def clave(self) -> tuple:
+        """Identificador canónico: el orden de las fichas no importa."""
+        return (self.oro, tuple(sorted(self.banca)), tuple(sorted(self.tablero)),
+                tuple(sorted(t for t in self.tienda if t)))
+
+    def descripcion(self) -> str:
+        def f(us):
+            return ",".join(f"{n}{k}" for n, k in sorted(us)) or "-"
+        return f"oro={self.oro} tab=[{f(self.tablero)}] banca=[{f(self.banca)}]"
+
+    # ---------------------------- acciones -----------------------------
+    def acciones(self) -> List[AccionPlan]:
+        """Acciones aplicables (sin duplicados por fichas idénticas)."""
         acc: List[AccionPlan] = []
-        if len(s.banca) < self.tam_banca:
-            for nombre in sorted({t for t in s.tienda if t}):
-                if CATALOGO[nombre].costo <= s.oro:
+        if len(self.banca) < self.tam_banca:
+            for nombre in sorted({t for t in self.tienda if t}):
+                if CATALOGO[nombre].coste <= self.oro:
                     acc.append(("comprar", nombre))
-        conteo = Counter(s.banca + s.tablero)
+        conteo = Counter(self.banca)
         for clave, n in sorted(conteo.items()):
-            if n >= COPIAS_PARA_COMBINAR and clave[1] < ESTRELLAS_MAX:
+            if n >= COPIAS_PARA_COMBINAR and clave[1] < NIVEL_MAX:
                 acc.append(("combinar", clave))
-        if len(s.tablero) < self.cap_tablero:
-            for clave in sorted(set(s.banca)):
+        if len(self.tablero) < self.cap_tablero:
+            for clave in sorted(set(self.banca)):
                 acc.append(("a_tablero", clave))
-        if len(s.banca) < self.tam_banca:
-            for clave in sorted(set(s.tablero)):
+        if len(self.banca) < self.tam_banca:
+            for clave in sorted(set(self.tablero)):
                 acc.append(("a_banca", clave))
         return acc
 
-    def resultado(self, s: EstadoTurno, a: AccionPlan) -> EstadoTurno:
-        """Función de transición del modelo (mismas reglas que el ambiente)."""
+    def aplicar(self, a: AccionPlan) -> Any:
+        """Ejecuta ``a`` sobre el modelo y devuelve lo necesario para
+        deshacerla."""
         tipo, arg = a
         if tipo == "comprar":
-            tienda = list(s.tienda)
-            tienda[tienda.index(arg)] = None
-            return replace(s, oro=s.oro - CATALOGO[arg].costo,
-                           banca=_agregar(s.banca, (arg, 1)), tienda=tuple(tienda))
+            i = self.tienda.index(arg)
+            self.tienda[i] = None
+            self.oro -= CATALOGO[arg].coste
+            self.banca.append((arg, 1))
+            return i
         if tipo == "combinar":
-            # Igual que MagicChessEnv._combinar: consume primero la banca; si
-            # usa alguna copia del tablero, la unidad nueva queda en el tablero.
-            banca, tablero = list(s.banca), list(s.tablero)
-            restantes = COPIAS_PARA_COMBINAR
-            while restantes and arg in banca:
-                banca.remove(arg)
-                restantes -= 1
-            usa_tablero = restantes > 0
-            while restantes:
-                tablero.remove(arg)
-                restantes -= 1
-            nueva = (arg[0], arg[1] + 1)
-            (tablero if usa_tablero else banca).append(nueva)
-            return replace(s, banca=tuple(sorted(banca)), tablero=tuple(sorted(tablero)))
+            for _ in range(COPIAS_PARA_COMBINAR):
+                self.banca.remove(arg)
+            self.banca.append((arg[0], arg[1] + 1))
+            return None
         if tipo == "a_tablero":
-            return replace(s, banca=_quitar(s.banca, arg), tablero=_agregar(s.tablero, arg))
+            self.banca.remove(arg)
+            self.tablero.append(arg)
+            return None
         if tipo == "a_banca":
-            return replace(s, tablero=_quitar(s.tablero, arg), banca=_agregar(s.banca, arg))
+            self.tablero.remove(arg)
+            self.banca.append(arg)
+            return None
         raise ValueError(a)
 
-    # -------------------------- evaluación ---------------------------
-    @staticmethod
-    def _poder_individual(clave: Clave) -> float:
-        return CATALOGO[clave[0]].poder_base * MULT_ESTRELLAS[clave[1]]
+    def deshacer(self, a: AccionPlan, info: Any) -> None:
+        """Revierte ``a`` (inversa exacta de ``aplicar``)."""
+        tipo, arg = a
+        if tipo == "comprar":
+            self.banca.remove((arg, 1))
+            self.oro += CATALOGO[arg].coste
+            self.tienda[info] = arg
+        elif tipo == "combinar":
+            self.banca.remove((arg[0], arg[1] + 1))
+            self.banca.extend([arg] * COPIAS_PARA_COMBINAR)
+        elif tipo == "a_tablero":
+            self.tablero.remove(arg)
+            self.banca.append(arg)
+        elif tipo == "a_banca":
+            self.banca.remove(arg)
+            self.tablero.append(arg)
 
-    def poder_tablero(self, tablero: Tuple[Clave, ...]) -> float:
-        if tablero not in self._cache_poder:
-            unidades = [Unidad(0, n, e) for n, e in tablero]
-            self._cache_poder[tablero] = self.env.poder_equipo(
-                self.jugador, tablero_rival=self.tablero_rival,
-                tablero_propio=unidades).total
-        return self._cache_poder[tablero]
+    # ---------------------------- utilidad -----------------------------
+    def poder_tablero(self) -> float:
+        k = tuple(sorted(self.tablero))
+        if k not in self._cache_poder:
+            unidades = [Unidad(0, n, nv) for n, nv in k]
+            self._cache_poder[k] = calcular_poder(unidades, self.tablero_rival).total
+        return self._cache_poder[k]
 
-    def termino_economico(self, oro: int) -> float:
-        return (self.pesos.interes * calcular_interes(oro, self.paso_interes,
-                                                      self.tope_interes)
-                + self.pesos.oro * oro)
+    def valor(self) -> float:
+        """Utilidad V del estado actual del modelo."""
+        bono = calcular_bono_ahorro(self.oro + self.ingreso, self.umbral, self.bono)
+        banca = sum(CATALOGO[n].poder(nv) for n, nv in self.banca)
+        return (self.poder_tablero() + self.pesos.bono * bono
+                + self.pesos.oro * self.oro + self.pesos.banca * banca)
 
-    def valor(self, s: EstadoTurno) -> float:
-        """Utilidad V(s) de terminar el turno en ``s``."""
-        k = (s.oro, s.banca, s.tablero)
-        if k not in self._cache_valor:
-            banca = sum(self._poder_individual(c) for c in s.banca)
-            self._cache_valor[k] = (self.poder_tablero(s.tablero)
-                                    + self.termino_economico(s.oro)
-                                    + self.pesos.banca * banca)
-        return self._cache_valor[k]
-
-    # -------------------------- heurísticas --------------------------
-    @staticmethod
-    def _alternativas_combinacion(conteo: Counter, maximo: int = 64
-                                  ) -> List[List[Clave]]:
-        """Todas las formas de dejar las unidades de ``conteo``: para cada
-        grupo de 3 copias iguales se considera combinarlo o no. Así la cota
-        cubre tanto los estados donde se combinó como donde no."""
-        resultados: List[List[Clave]] = []
-        vistos = set()
-        pila = [Counter(conteo)]
-        while pila and len(resultados) < maximo:
-            c = pila.pop()
-            firma = tuple(sorted(c.items()))
-            if firma in vistos:
-                continue
-            vistos.add(firma)
-            resultados.append(list(c.elements()))
-            for (n, e), k in c.items():
-                if k >= COPIAS_PARA_COMBINAR and e < ESTRELLAS_MAX:
-                    nuevo = Counter(c)
-                    nuevo[(n, e)] -= COPIAS_PARA_COMBINAR
-                    nuevo[(n, e + 1)] += 1
-                    pila.append(+nuevo)
-        return resultados
-
-    def _cota_unidades(self, unidades: List[Clave]) -> float:
-        """Cota rápida de P(tablero) + w_banca * B(banca) con ``unidades``
-        (usada por h1).
-
-        Cada unidad recibe la sinergia que alcanzaría su elemento si todas
-        las unidades de ese elemento estuvieran desplegadas, y el equipo la
-        mejor ventaja elemental de cualquiera de sus unidades frente al
-        tablero rival. Luego se ponen en el tablero las ``cap_tablero`` de
-        mayor poder potenciado y el resto en la banca. No calcula repartos
-        exactos, por eso es más barata pero menos ajustada que h2.
-        """
-        por_elem = Counter(CATALOGO[n].elemento for n, _ in unidades)
-        mult = {el: 1.0 + bono_sinergia(min(self.cap_tablero, k))
-                for el, k in por_elem.items()}
-        factor = 1.0 + PESO_VENTAJA * max(
-            (self._ventaja_elem[CATALOGO[n].elemento] for n, _ in unidades),
-            default=0.0)
-        en_tablero = sorted(
-            ((self._poder_individual(c) * mult[CATALOGO[c[0]].elemento] * factor,
-              self._poder_individual(c)) for c in unidades), reverse=True)
-        top = sum(p for p, _ in en_tablero[:self.cap_tablero])
-        resto = sum(b for _, b in en_tablero[self.cap_tablero:])
-        # una unidad nunca vale menos en el tablero que en la banca en la
-        # cota, salvo que w_banca sea enorme: se cubre ese caso también
-        top = max(top, self.pesos.banca * sum(b for _, b in en_tablero[:self.cap_tablero]))
-        return top + self.pesos.banca * resto
-
-    def _mejor_reparto(self, unidades: Tuple[Clave, ...]) -> float:
-        """Máximo exacto de P(tablero) + w_banca * B(banca) repartiendo
-        LIBREMENTE ``unidades`` entre tablero (<= cap_tablero) y banca.
-
-        Es la solución de un problema *relajado*: se ignora que mover fichas
-        requiere acciones y que la banca tiene capacidad. Toda solución del
-        problema real es solución del relajado, por eso su valor es una cota
-        superior (heurística admisible). Se guarda en caché: muchos estados
-        comparten el mismo conjunto de unidades y solo difieren en dónde
-        están ubicadas.
-        """
-        if unidades in self._cache_reparto:
-            return self._cache_reparto[unidades]
-        total_banca = sum(self._poder_individual(c) for c in unidades)
-        mejor = self.pesos.banca * total_banca          # tablero vacío
-        vistos = set()
-        for k in range(1, min(self.cap_tablero, len(unidades)) + 1):
-            for idx in combinations(range(len(unidades)), k):
-                tablero = tuple(unidades[i] for i in idx)
-                if tablero in vistos:
-                    continue
-                vistos.add(tablero)
-                en_banca = total_banca - sum(self._poder_individual(c) for c in tablero)
-                mejor = max(mejor, self.poder_tablero(tablero)
-                            + self.pesos.banca * en_banca)
-        self._cache_reparto[unidades] = mejor
-        return mejor
-
-    def cota(self, s: EstadoTurno, heuristica: str = "h2") -> float:
-        """f(s) = V(s) + h(s): cota SUPERIOR (admisible) del valor de
-        cualquier estado alcanzable desde ``s``, incluido ``s``.
-
-        * ``h1`` (por unidades): para cada subconjunto de compras pagable
-          descuenta el oro gastado y acota el poder con ``_cota_unidades``
-          (sinergia posible por elemento y la mejor ventaja elemental para
-          todo el equipo). Barata por nodo, pero holgada.
-        * ``h2`` (relajada): recorre cada subconjunto de compras de la tienda
-          que alcance a pagarse y cada forma de combinar; para cada uno
-          descuenta el oro gastado y calcula el MEJOR reparto exacto de esas
-          unidades entre tablero y banca (``_mejor_reparto``), ignorando que
-          mover fichas cuesta acciones. Es admisible porque todo estado
-          alcanzable corresponde a una de esas opciones, y es mucho más
-          ajustada que h1 (poda más), a cambio de más cómputo por nodo.
-
-        En ambas el oro no puede aumentar (no se vende), así que el término
-        económico de ``s`` también es una cota.
-        """
-        clave = (s.clave(), heuristica)
-        if clave in self._cache_cota:
-            return self._cache_cota[clave]
-        propias = Counter(s.banca + s.tablero)
-        tienda = [t for t in s.tienda if t]
-        cota = float("-inf")
-        for mascara in range(1 << len(tienda)):
-            compra = [t for i, t in enumerate(tienda) if mascara >> i & 1]
-            costo = sum(CATALOGO[t].costo for t in compra)
-            if costo > s.oro:
-                continue
-            conteo = Counter(propias)
-            for t in compra:
-                conteo[(t, 1)] += 1
-            alternativas = self._alternativas_combinacion(conteo)
-            if heuristica == "h1":
-                unidades = max(self._cota_unidades(u) for u in alternativas)
-            else:
-                unidades = max(self._mejor_reparto(tuple(sorted(u)))
-                               for u in alternativas)
-            cota = max(cota, unidades + self.termino_economico(s.oro - costo))
-        cota = max(cota, self.valor(s))
-        self._cache_cota[clave] = cota
-        return cota
-
-    # -------------------------- traducción ---------------------------
+    # --------------------------- traducción ----------------------------
     def a_accion_env(self, a: AccionPlan) -> Accion:
-        """Convierte una acción del plan en una ``Accion`` del ambiente real
-        (busca el índice correspondiente en la tienda / banca / tablero)."""
+        """Convierte una acción del plan en una ``Accion`` del ambiente."""
         tipo, arg = a
         j = self.env.jugadores[self.jugador]
         if tipo == "terminar":
@@ -427,318 +223,157 @@ class ProblemaTurno:
         if tipo == "combinar":
             return Accion(TipoAccion.COMBINAR, tuple(arg))
         if tipo == "a_tablero":
-            i = next(i for i, u in enumerate(j.banca) if u.clave() == tuple(arg))
-            return Accion(TipoAccion.A_TABLERO, i)
+            return Accion(TipoAccion.A_TABLERO,
+                          next(i for i, u in enumerate(j.banca) if u.clave() == tuple(arg)))
         if tipo == "a_banca":
-            i = next(i for i, u in enumerate(j.tablero) if u.clave() == tuple(arg))
-            return Accion(TipoAccion.A_BANCA, i)
+            return Accion(TipoAccion.A_BANCA,
+                          next(i for i, u in enumerate(j.tablero) if u.clave() == tuple(arg)))
         raise ValueError(a)
 
 
+def valor_estado_real(env: MagicChessEnv, jugador: int,
+                      pesos: Optional[PesosEvaluacion] = None) -> float:
+    """V del estado actual del jugador en el ambiente real (misma medida
+    para comparar los tres algoritmos)."""
+    return ModeloTurno(env, jugador, pesos).valor()
+
+
 # ===========================================================================
-# 2. Algoritmos de búsqueda
+# 2. Backtracking
 # ===========================================================================
 @dataclass
 class ResultadoBusqueda:
-    """Salida común de todos los algoritmos.
-
-    plan : acciones del modelo (termina siempre en ("terminar", None)).
-    estado_final / valor : mejor estado encontrado y su utilidad V.
-    metricas : tiempo, nodos generados/expandidos, frontera máxima, etc.
-    traza : eventos del proceso de búsqueda para animarlo en la GUI. Cada
-        evento: {"n": #expansión, "estado": str, "valor": V, "f": f o None,
-        "frontera": tamaño, "mejor": mejor V hasta ahora}.
-    """
+    """plan (termina en ("terminar", None)), valor V alcanzado, métricas y
+    traza del proceso para la GUI. Cada evento de la traza:
+    {"n", "tipo", "accion", "profundidad", "estado", "valor", "mejor"}
+    con tipo en {"expandir", "retroceder", "repetido"}."""
 
     plan: List[AccionPlan]
-    estado_final: EstadoTurno
     valor: float
     metricas: MetricasBusqueda
-    traza: List[Dict[str, Any]] = field(default_factory=list)
+    traza: List[Dict[str, Any]]
 
 
-def _reconstruir(padres: Dict[tuple, Tuple[Optional[tuple], Optional[AccionPlan]]],
-                 clave: tuple) -> List[AccionPlan]:
-    plan = []
-    while padres[clave][0] is not None:
-        clave_padre, accion = padres[clave]
-        plan.append(accion)
-        clave = clave_padre
-    plan.reverse()
-    return plan
+def backtracking(modelo: ModeloTurno, limite_profundidad: Optional[int] = None
+                 ) -> ResultadoBusqueda:
+    """Búsqueda exhaustiva en profundidad con retroceso.
 
+    En cada nodo se evalúa V y se actualiza el mejor; luego, para cada
+    acción aplicable, se APLICA, se explora recursivamente y se DESHACE
+    (retroceso). Se guarda la menor profundidad con que se llegó a cada
+    estado: si se vuelve a llegar con una profundidad igual o mayor se poda
+    (evita ciclos como desplegar / retirar la misma ficha y repetir estados
+    alcanzados en otro orden); si se llega por un camino más corto se vuelve
+    a explorar, así el plan final es el más corto entre los de mayor V.
 
-def _registrar(traza, n, s, v, f, frontera, mejor) -> None:
-    if len(traza) < MAX_TRAZA:
-        traza.append({"n": n, "estado": str(s), "valor": round(v, 3),
-                      "f": None if f is None else round(f, 3),
-                      "frontera": frontera, "mejor": round(mejor, 3)})
+    Propiedades: completo y óptimo respecto a V (sin límite de profundidad),
+    porque el espacio del turno es finito y se recorre entero. Tiempo
+    O(estados alcanzables * b); memoria O(d) en la pila de recursión más
+    O(estados) en la tabla de visitados.
 
-
-def busqueda_anchura(problema: ProblemaTurno,
-                     limite_nodos: int = 200_000) -> ResultadoBusqueda:
-    """BFS sobre el espacio de estados del turno (no informada).
-
-    Expande por niveles y evalúa V en cada estado. Con conjunto de visitados
-    cada estado se expande una sola vez. Si recorre todo el espacio, el mejor
-    estado encontrado es el óptimo global de V.
+    Métricas: nodos generados (acciones aplicadas), expandidos (estados
+    explorados) y ``max_frontera`` = profundidad máxima de la pila.
     """
-    m = MetricasBusqueda(algoritmo="BFS")
+    m = MetricasBusqueda(algoritmo="Backtracking")
     traza: List[Dict[str, Any]] = []
+    camino: List[AccionPlan] = []
+    visitados = {modelo.clave(): 0}          # estado -> menor profundidad vista
+    mejor = {"v": modelo.valor(), "plan": []}
+
+    def evento(tipo: str, accion, valor) -> None:
+        if len(traza) < MAX_TRAZA:
+            traza.append({"n": m.nodos_expandidos, "tipo": tipo,
+                          "accion": None if accion is None else f"{accion[0]}({accion[1]})",
+                          "profundidad": len(camino), "estado": modelo.descripcion(),
+                          "valor": round(valor, 3), "mejor": round(mejor["v"], 3)})
+
+    def explorar() -> None:
+        m.nodos_expandidos += 1
+        m.registrar_frontera(len(camino))
+        v = modelo.valor()
+        if (v > mejor["v"] + 1e-9
+                or (abs(v - mejor["v"]) <= 1e-9 and len(camino) < len(mejor["plan"]))):
+            mejor["v"], mejor["plan"] = v, list(camino)   # mejor o igual y más corto
+        evento("expandir", camino[-1] if camino else None, v)
+        if limite_profundidad is not None and len(camino) >= limite_profundidad:
+            return
+        for a in modelo.acciones():
+            m.nodos_generados += 1
+            info = modelo.aplicar(a)
+            k = modelo.clave()
+            if visitados.get(k, float("inf")) <= len(camino) + 1:
+                evento("repetido", a, modelo.valor())   # ya explorado (poda)
+            else:
+                visitados[k] = len(camino) + 1
+                camino.append(a)
+                explorar()
+                camino.pop()
+            modelo.deshacer(a, info)                 # retroceso
+            evento("retroceder", a, v)
+
     with Cronometro() as c:
-        s0 = problema.estado_inicial
-        frontera = deque([s0])
-        padres = {s0.clave(): (None, None)}
-        mejor, mejor_v = s0, problema.valor(s0)
-        m.nodos_generados = 1
-        completo = True
-        while frontera:
-            if m.nodos_expandidos >= limite_nodos:
-                completo = False
-                break
-            s = frontera.popleft()
-            m.nodos_expandidos += 1
-            v = problema.valor(s)
-            if v > mejor_v:
-                mejor, mejor_v = s, v
-            for a in problema.acciones(s):
-                hijo = problema.resultado(s, a)
-                k = hijo.clave()
-                if k in padres:
-                    continue
-                padres[k] = (s.clave(), a)
-                frontera.append(hijo)
-                m.nodos_generados += 1
-            m.registrar_frontera(len(frontera))
-            _registrar(traza, m.nodos_expandidos, s, v, None, len(frontera), mejor_v)
-        plan = _reconstruir(padres, mejor.clave()) + [("terminar", None)]
-    return _cerrar(m, c, plan, mejor, mejor_v, traza,
-                   optima=True if completo else None, problema=problema)
+        explorar()
+    plan = simplificar_plan(modelo, mejor["plan"], mejor["v"]) + [("terminar", None)]
+    m.tiempo_s = c.segundos
+    m.longitud_solucion = len(plan)
+    m.costo_solucion = round(mejor["v"], 4)        # aquí "costo" = utilidad V
+    m.encontro_solucion = True
+    m.es_optima = True if limite_profundidad is None else None
+    m.extra["estados_visitados"] = len(visitados)
+    return ResultadoBusqueda(plan, mejor["v"], m, traza)
 
 
-def busqueda_profundidad_limitada(problema: ProblemaTurno, limite: int = 6
-                                  ) -> ResultadoBusqueda:
-    """Búsqueda en profundidad con límite ``limite`` (no informada).
-
-    Usa una pila. Para no repetir trabajo guarda la menor profundidad con la
-    que se llegó a cada estado y solo lo re-expande si llega más arriba
-    (así no se pierden estados alcanzables dentro del límite).
-    """
-    m = MetricasBusqueda(algoritmo=f"DLS(L={limite})")
-    traza: List[Dict[str, Any]] = []
-    with Cronometro() as c:
-        s0 = problema.estado_inicial
-        pila: List[Tuple[EstadoTurno, int, List[AccionPlan]]] = [(s0, 0, [])]
-        profundidad_vista = {s0.clave(): 0}
-        mejor, mejor_v, mejor_plan = s0, problema.valor(s0), []
-        m.nodos_generados = 1
-        while pila:
-            s, d, camino = pila.pop()
-            m.nodos_expandidos += 1
-            v = problema.valor(s)
-            if v > mejor_v:
-                mejor, mejor_v, mejor_plan = s, v, camino
-            if d < limite:
-                for a in reversed(problema.acciones(s)):
-                    hijo = problema.resultado(s, a)
-                    k = hijo.clave()
-                    if profundidad_vista.get(k, limite + 1) <= d + 1:
-                        continue
-                    profundidad_vista[k] = d + 1
-                    pila.append((hijo, d + 1, camino + [a]))
-                    m.nodos_generados += 1
-            m.registrar_frontera(len(pila))
-            _registrar(traza, m.nodos_expandidos, s, v, None, len(pila), mejor_v)
-        plan = mejor_plan + [("terminar", None)]
-    m.extra["limite"] = limite
-    return _cerrar(m, c, plan, mejor, mejor_v, traza, optima=None,
-                   problema=problema)
-
-
-def busqueda_a_estrella(problema: ProblemaTurno, heuristica: str = "h2",
-                        limite_nodos: int = 200_000) -> ResultadoBusqueda:
-    """A* para maximización (equivalente a Branch & Bound primero-el-mejor).
-
-    La frontera es una cola de prioridad ordenada por f(n) = V(n) + h(n)
-    (``ProblemaTurno.cota``). Se saca siempre el nodo más prometedor. Como f
-    es una cota superior admisible, en cuanto la mejor f de la frontera no
-    supera el mejor V ya encontrado, ningún estado sin explorar puede ser
-    mejor: se detiene con la solución óptima.
-    """
-    m = MetricasBusqueda(algoritmo=f"A* ({heuristica})")
-    traza: List[Dict[str, Any]] = []
-    with Cronometro() as c:
-        s0 = problema.estado_inicial
-        contador = 0
-        frontera = [(-problema.cota(s0, heuristica), 0.0, 0, contador, s0)]
-        profundidad = {s0.clave(): 0}
-        padres = {s0.clave(): (None, None)}
-        cerrados = set()
-        mejor, mejor_v = s0, problema.valor(s0)
-        m.nodos_generados = 1
-        completo = True
-        while frontera:
-            f_neg, _, _, _, s = heapq.heappop(frontera)
-            if -f_neg <= mejor_v + 1e-9:
-                break                         # prueba de optimalidad
-            k = s.clave()
-            if k in cerrados:
-                continue
-            if m.nodos_expandidos >= limite_nodos:
-                completo = False
-                break
-            cerrados.add(k)
-            m.nodos_expandidos += 1
-            v = problema.valor(s)
-            if v > mejor_v:
-                mejor, mejor_v = s, v
-            for a in problema.acciones(s):
-                hijo = problema.resultado(s, a)
-                kh = hijo.clave()
-                if kh in padres:
-                    # ya conocido: si este camino es más corto, se reengancha
-                    # (el valor no depende del camino, pero un plan corto es
-                    # mejor solución: menos acciones)
-                    if profundidad[k] + 1 < profundidad[kh]:
-                        padres[kh] = (k, a)
-                        profundidad[kh] = profundidad[k] + 1
-                    continue
-                padres[kh] = (k, a)
-                profundidad[kh] = profundidad[k] + 1
-                m.nodos_generados += 1
-                vh = problema.valor(hijo)
-                if vh > mejor_v:              # el hijo ya es una solución mejor
-                    mejor, mejor_v = hijo, vh
-                f = problema.cota(hijo, heuristica)
-                if f > mejor_v + 1e-9:        # si f <= mejor V, se poda
-                    contador += 1
-                    # desempate: a igual f, primero el de mayor V y luego el
-                    # menos profundo
-                    heapq.heappush(frontera, (-f, -vh, profundidad[kh], contador, hijo))
-            m.registrar_frontera(len(frontera))
-            _registrar(traza, m.nodos_expandidos, s, v, -f_neg, len(frontera), mejor_v)
-        plan = _reconstruir(padres, mejor.clave()) + [("terminar", None)]
-    m.extra["heuristica"] = heuristica
-    return _cerrar(m, c, plan, mejor, mejor_v, traza,
-                   optima=True if completo else None, problema=problema)
-
-
-def busqueda_voraz(problema: ProblemaTurno, anticipacion: int = 2
-                   ) -> ResultadoBusqueda:
-    """Ascenso de colina (voraz) con anticipación.
-
-    Desde el estado actual mira todas las secuencias de hasta
-    ``anticipacion`` acciones, avanza al estado de mayor V y repite hasta que
-    ninguna secuencia mejore. Es rápida pero puede quedarse en un óptimo
-    local (p. ej. no ve que comprar 3 copias y combinar es mejor).
-    """
-    m = MetricasBusqueda(algoritmo=f"Voraz (k={anticipacion})")
-    traza: List[Dict[str, Any]] = []
-    with Cronometro() as c:
-        s = problema.estado_inicial
-        v = problema.valor(s)
-        plan: List[AccionPlan] = []
-        m.nodos_generados = 1
-        while True:
-            m.nodos_expandidos += 1
-            mejor_sec, mejor_s, mejor_v = None, None, v
-            nivel = [(s, [])]
-            for _ in range(anticipacion):
-                siguiente = []
-                for estado, sec in nivel:
-                    for a in problema.acciones(estado):
-                        hijo = problema.resultado(estado, a)
-                        m.nodos_generados += 1
-                        vh = problema.valor(hijo)
-                        if vh > mejor_v + 1e-9:
-                            mejor_sec, mejor_s, mejor_v = sec + [a], hijo, vh
-                        siguiente.append((hijo, sec + [a]))
-                nivel = siguiente
-                m.registrar_frontera(len(nivel))
-            _registrar(traza, m.nodos_expandidos, s, v, None, len(nivel), v)
-            if mejor_sec is None:
-                break
-            plan += mejor_sec
-            s, v = mejor_s, mejor_v
-        plan.append(("terminar", None))
-    m.extra["anticipacion"] = anticipacion
-    return _cerrar(m, c, plan, s, v, traza, optima=None, problema=problema)
-
-
-def simplificar_plan(problema: ProblemaTurno, plan: List[AccionPlan],
+def simplificar_plan(modelo: ModeloTurno, plan: List[AccionPlan],
                      valor_objetivo: float) -> List[AccionPlan]:
-    """Elimina acciones sobrantes de un plan (p. ej. desplegar una ficha y
-    luego retirarla) sin bajar su utilidad. Prueba quitar una acción o un par
-    de acciones mientras el plan siga siendo aplicable y su estado final
-    tenga el mismo V. No cambia la solución, solo la acorta."""
-    def aplicar(p):
-        s = problema.estado_inicial
+    """Quita acciones sobrantes del plan (p. ej. desplegar y retirar la misma
+    ficha) sin bajar su utilidad. El DFS suele encontrar primero caminos
+    largos; esto deja el mismo resultado con menos acciones."""
+    def valor_si_aplicable(p):
+        hechas, ok = [], True
         for a in p:
-            if a not in problema.acciones(s):
-                return None
-            s = problema.resultado(s, a)
-        return s
+            if a not in modelo.acciones():
+                ok = False
+                break
+            hechas.append((a, modelo.aplicar(a)))
+        v = modelo.valor() if ok else None
+        for a, info in reversed(hechas):
+            modelo.deshacer(a, info)
+        return v
 
-    pasos = [a for a in plan if a[0] != "terminar"]
+    pasos = list(plan)
     cambio = True
     while cambio:
         cambio = False
         n = len(pasos)
-        candidatos = [(i,) for i in range(n)] + [(i, j) for i in range(n)
-                                                 for j in range(i + 1, n)]
-        for quitar in candidatos:
+        for quitar in [(i,) for i in range(n)] + [(i, j) for i in range(n)
+                                                  for j in range(i + 1, n)]:
             nuevo = [a for k, a in enumerate(pasos) if k not in quitar]
-            final = aplicar(nuevo)
-            if final is not None and problema.valor(final) >= valor_objetivo - 1e-9:
+            v = valor_si_aplicable(nuevo)
+            if v is not None and v >= valor_objetivo - 1e-9:
                 pasos, cambio = nuevo, True
                 break
-    return pasos + [("terminar", None)]
-
-
-def _cerrar(m, c, plan, estado, valor, traza, optima,
-            problema: Optional[ProblemaTurno] = None) -> ResultadoBusqueda:
-    if problema is not None:
-        m.extra["longitud_original"] = len(plan)
-        plan = simplificar_plan(problema, plan, valor)
-    m.tiempo_s = c.segundos
-    m.longitud_solucion = len(plan)
-    m.costo_solucion = round(valor, 4)        # aquí "costo" = utilidad V
-    m.encontro_solucion = True
-    m.es_optima = optima
-    return ResultadoBusqueda(plan, estado, valor, m, traza)
-
-
-#: Registro de algoritmos disponibles: nombre -> función(problema)
-ALGORITMOS: Dict[str, Callable[[ProblemaTurno], ResultadoBusqueda]] = {
-    "BFS": lambda p: busqueda_anchura(p),
-    "DLS": lambda p: busqueda_profundidad_limitada(p, limite=6),
-    "A*h1": lambda p: busqueda_a_estrella(p, "h1"),
-    "A*h2": lambda p: busqueda_a_estrella(p, "h2"),
-    "Voraz": lambda p: busqueda_voraz(p, anticipacion=2),
-}
+    return pasos
 
 
 # ===========================================================================
 # 3. Agentes
 # ===========================================================================
-class AgenteBusqueda:
-    """Agente basado en modelo: al empezar su turno formula el
-    ``ProblemaTurno``, lo resuelve con el algoritmo elegido y ejecuta el
-    plan una acción por llamada (así la GUI puede animarlo).
+class AgenteBacktracking:
+    """Agente basado en modelo: al empezar su turno lo resuelve con
+    ``backtracking`` y ejecuta el plan óptimo una acción por llamada.
 
-    Política de renovación (fuera de la búsqueda porque es aleatoria): si el
-    plan óptimo no compra nada y, después de pagar la renovación, el oro
-    sigue >= ``umbral_renovar``, renueva (máximo ``max_renovaciones`` por
-    ronda) y vuelve a planificar.
+    Renovación (fuera de la búsqueda por ser aleatoria): si el plan óptimo
+    no compra nada, hay espacio en la banca y tras pagar se conserva al
+    menos ``reserva_renovar`` de oro, renueva (máximo ``max_renovaciones``
+    por ronda) y vuelve a planificar.
     """
 
-    def __init__(self, algoritmo: str = "A*h2",
-                 pesos: Optional[PesosEvaluacion] = None,
-                 umbral_renovar: int = 10, max_renovaciones: int = 2) -> None:
-        self.algoritmo = algoritmo
-        self.nombre = algoritmo
+    nombre = "Backtracking"
+
+    def __init__(self, pesos: Optional[PesosEvaluacion] = None,
+                 reserva_renovar: int = 3, max_renovaciones: int = 1) -> None:
         self.pesos = pesos or PesosEvaluacion()
-        self.umbral_renovar = umbral_renovar
+        self.reserva_renovar = reserva_renovar
         self.max_renovaciones = max_renovaciones
         self.reiniciar()
 
@@ -746,220 +381,246 @@ class AgenteBusqueda:
         self._plan: List[AccionPlan] = []
         self._ronda = -1
         self._renovaciones = 0
+        self._modelo: Optional[ModeloTurno] = None
         self.ultimo_resultado: Optional[ResultadoBusqueda] = None
         self.historial_metricas: List[MetricasBusqueda] = []
+
+    def planificar(self, env: MagicChessEnv, jugador: int) -> ResultadoBusqueda:
+        self._modelo = ModeloTurno(env, jugador, self.pesos)
+        res = backtracking(self._modelo)
+        self.ultimo_resultado = res
+        self.historial_metricas.append(res.metricas)
+        return res
 
     def actuar(self, env: MagicChessEnv, jugador: int) -> Accion:
         if env.ronda != self._ronda:
             self._ronda, self._renovaciones, self._plan = env.ronda, 0, []
         if not self._plan:
-            problema = ProblemaTurno(env, jugador, self.pesos)
-            res = ALGORITMOS[self.algoritmo](problema)
-            self.ultimo_resultado = res
-            self.historial_metricas.append(res.metricas)
-            compra = any(a[0] == "comprar" for a in res.plan)
+            res = self.planificar(env, jugador)
             j = env.jugadores[jugador]
-            costo = env.config.costo_renovar
+            compra = any(a[0] == "comprar" for a in res.plan)
             if (not compra and self._renovaciones < self.max_renovaciones
-                    and j.oro - costo >= self.umbral_renovar
-                    and len(j.banca) < env.config.tamano_banca):
+                    and len(j.banca) < env.config.tamano_banca
+                    and j.oro - env.config.coste_renovar >= self.reserva_renovar):
                 self._renovaciones += 1
                 return Accion(TipoAccion.RENOVAR)
             self._plan = list(res.plan)
-            self._problema = problema
         a = self._plan.pop(0)
         try:
-            accion = self._problema.a_accion_env(a)
+            accion = self._modelo.a_accion_env(a)
         except (ValueError, StopIteration):
             accion = None
         if accion is None or not env.es_legal(jugador, accion):
-            self._plan = []                      # algo cambió: replanificar
+            self._plan = []                          # algo cambió: replanificar
             return Accion(TipoAccion.TERMINAR)
         return accion
 
     def lineas_estado(self) -> List[str]:
-        """Estado interno resumido para la GUI."""
         r = self.ultimo_resultado
         if r is None:
             return [self.nombre, "sin búsquedas aún"]
         m = r.metricas
-        opt = {True: "sí", None: "?", False: "no"}[m.es_optima]
         prox = self._plan[0][0] if self._plan else "-"
-        return [m.algoritmo,
-                f"V* = {r.valor:.2f}  óptima: {opt}",
+        return [self.nombre,
+                f"V* = {r.valor:.2f} (óptimo)",
                 f"expandidos: {m.nodos_expandidos}",
                 f"generados: {m.nodos_generados}",
-                f"frontera máx: {m.max_frontera}",
+                f"prof. máx: {m.max_frontera}",
                 f"tiempo: {m.tiempo_s * 1000:.1f} ms",
                 f"plan: {len(r.plan)} acc. próx: {prox}"]
 
-    def resumen(self) -> str:
-        r = self.ultimo_resultado
-        if r is None:
-            return f"{self.nombre}: sin búsquedas aún"
-        m = r.metricas
-        opt = {True: "óptima", None: "?", False: "no óptima"}[m.es_optima]
-        return (f"{m.algoritmo}: V={r.valor:.1f} ({opt})  exp={m.nodos_expandidos} "
-                f"gen={m.nodos_generados} front={m.max_frontera} "
-                f"{m.tiempo_s * 1000:.1f}ms")
-
 
 @dataclass(frozen=True)
-class PerfilReglas:
-    """Parámetros de la estrategia por reglas.
+class PerfilHeuristico:
+    """Parámetros de la estrategia heurística.
 
-    * reserva: oro mínimo que intenta conservar (bonificación por ahorro).
-    * renovar_si_oro: renueva si después de pagar le queda al menos esto.
-    * max_renovaciones: renovaciones por ronda.
-    * prioridad_copias: bono de puntuación por comprar copias de unidades
-      que ya tiene (busca combinaciones).
+    reserva : oro mínimo a conservar al comprar (3 asegura llegar a 6 tras
+        el ingreso de +3 y cobrar la bonificación por ahorro).
+    renovar_si_oro : renueva si tras pagar le queda al menos esto.
+    max_renovaciones : renovaciones por ronda.
+    peso_copias : bono por cada copia ya poseída en la banca (busca mejoras).
+    peso_variedad : bono por una ficha DIFERENTE de un elemento que ya está
+        en el tablero (busca sinergia).
     """
 
     nombre: str = "equilibrado"
-    reserva: int = 10
-    renovar_si_oro: int = 12
+    reserva: int = 3
+    renovar_si_oro: int = 4
     max_renovaciones: int = 1
-    prioridad_copias: float = 3.0
+    peso_copias: float = 1.0
+    peso_variedad: float = 0.8
 
 
 PERFILES = {
-    "agresivo": PerfilReglas("agresivo", reserva=0, renovar_si_oro=4,
-                             max_renovaciones=2, prioridad_copias=2.0),
-    "equilibrado": PerfilReglas(),
-    "ahorro": PerfilReglas("ahorro", reserva=30, renovar_si_oro=40,
-                           max_renovaciones=0, prioridad_copias=3.0),
-    "combos": PerfilReglas("combos", reserva=4, renovar_si_oro=6,
-                           max_renovaciones=3, prioridad_copias=8.0),
+    "agresivo": PerfilHeuristico("agresivo", reserva=0, renovar_si_oro=0,
+                                 max_renovaciones=2),
+    "equilibrado": PerfilHeuristico(),
+    "ahorro": PerfilHeuristico("ahorro", reserva=6, renovar_si_oro=10,
+                               max_renovaciones=0),
+    "combos": PerfilHeuristico("combos", reserva=1, renovar_si_oro=2,
+                               max_renovaciones=3, peso_copias=3.0,
+                               peso_variedad=0.3),
 }
 
 
-class AgenteReglas:
-    """Estrategia heurística basada en reglas, evaluadas en orden de
-    prioridad en cada llamada:
+class AgenteHeuristico:
+    """Estrategia heurística basada en reglas. En cada llamada evalúa las
+    reglas en orden y dispara la primera que se cumple:
 
-    1. Si hay 3 copias iguales -> COMBINAR.
-    2. Si hay casilla libre en el tablero -> desplegar la mejor unidad de la
-       banca (poder ajustado por ventaja contra el rival).
-    3. Si el tablero está lleno y la banca tiene una unidad mejor que la peor
-       del tablero -> retirar la peor (luego la regla 2 despliega la mejor).
-    4. Comprar la mejor unidad de la tienda (poder + ventaja + bono por
-       copias) si alcanza el oro y no baja de la reserva; se permite romper
-       la reserva si la compra completa una combinación o si el tablero
-       tiene casillas vacías sin nada que desplegar.
-    5. Renovar si sobra oro (según el perfil).
-    6. TERMINAR.
+    R1 Combinar: hay 2 copias iguales en la banca.
+    R2 Desplegar: hay espacio en el tablero -> la ficha de la banca que más
+       aumenta el poder del tablero (h = poder con sinergia y ventaja frente
+       al rival actual).
+    R3 Reemplazar: tablero lleno y cambiar una ficha del tablero por una de
+       la banca aumenta el poder -> retirar la del tablero (R2 despliega la
+       otra en la siguiente llamada).
+    R4 Comprar: la ficha de la tienda con mejor puntaje (aumento de poder +
+       bono por copias + bono por variedad), si alcanza el oro y no rompe la
+       reserva (salvo que complete una mejora o el tablero tenga espacio sin
+       nada para desplegar).
+    R5 Renovar: si sobra oro según el perfil.
+    R6 Terminar.
+
+    Métricas tipo sistema experto: reglas evaluadas y reglas disparadas.
     """
 
     def __init__(self, perfil: str = "equilibrado") -> None:
         self.perfil = PERFILES[perfil]
-        self.nombre = f"Reglas-{perfil}"
+        self.nombre = "Heurística" if perfil == "equilibrado" else f"Heurística-{perfil}"
         self.reiniciar()
 
     def reiniciar(self) -> None:
         self._ronda = -1
         self._renovaciones = 0
         self._pasos_ronda = 0
-        self.ultima_regla = ""
+        self.ultima_regla = "-"
+        self.reglas_evaluadas = 0
+        self.reglas_disparadas = 0
 
-    def _puntaje(self, env, jugador, nombre, estrellas=1) -> float:
-        p = CATALOGO[nombre]
-        rival = env.jugadores[env.rival(jugador)].tablero
-        ventaja = (sum(ventaja_elemental(p.elemento, r.elemento) for r in rival)
-                   / len(rival)) if rival else 0.0
-        return p.poder_base * MULT_ESTRELLAS[estrellas] * (1 + PESO_VENTAJA * ventaja)
+    @staticmethod
+    def _poder(env, jugador, tablero: List[Unidad]) -> float:
+        """Función heurística: poder de un tablero hipotético frente al
+        tablero actual del rival."""
+        return calcular_poder(tablero, env.jugadores[env.rival(jugador)].tablero).total
+
+    def _disparar(self, regla: str, accion: Accion) -> Accion:
+        self.ultima_regla = regla
+        self.reglas_disparadas += 1
+        return accion
 
     def actuar(self, env: MagicChessEnv, jugador: int) -> Accion:
         if env.ronda != self._ronda:
             self._ronda, self._renovaciones, self._pasos_ronda = env.ronda, 0, 0
         self._pasos_ronda += 1
-        if self._pasos_ronda > 40:                      # salvaguarda anti-bucles
-            return self._regla("limite", Accion(TipoAccion.TERMINAR))
         j = env.jugadores[jugador]
         cfg = env.config
         cap = env.capacidad_tablero()
+        if self._pasos_ronda > 30:                          # salvaguarda
+            return self._disparar("R6 terminar", Accion(TipoAccion.TERMINAR))
+        poder_actual = self._poder(env, jugador, j.tablero)
 
-        # 1. Combinar
-        for (n, e), c in j.contar_copias().items():
-            if c >= COPIAS_PARA_COMBINAR and e < ESTRELLAS_MAX:
-                return self._regla("combinar", Accion(TipoAccion.COMBINAR, (n, e)))
+        # R1 combinar
+        self.reglas_evaluadas += 1
+        comb = j.combinables()
+        if comb:
+            return self._disparar("R1 combinar", Accion(TipoAccion.COMBINAR, comb[0]))
 
-        punt = lambda u: self._puntaje(env, jugador, u.nombre, u.estrellas)
-        # 2. Desplegar
+        # R2 desplegar
+        self.reglas_evaluadas += 1
         if j.banca and len(j.tablero) < cap:
-            i = max(range(len(j.banca)), key=lambda k: punt(j.banca[k]))
-            return self._regla("desplegar", Accion(TipoAccion.A_TABLERO, i))
-        # 3. Reemplazar la peor del tablero
-        if j.banca and j.tablero and len(j.banca) < cfg.tamano_banca:
-            peor = min(range(len(j.tablero)), key=lambda k: punt(j.tablero[k]))
-            if max(punt(u) for u in j.banca) > punt(j.tablero[peor]) + 1e-9:
-                return self._regla("reemplazar", Accion(TipoAccion.A_BANCA, peor))
+            ganancia = [self._poder(env, jugador, j.tablero + [u]) for u in j.banca]
+            i = max(range(len(j.banca)), key=lambda k: ganancia[k])
+            return self._disparar("R2 desplegar", Accion(TipoAccion.A_TABLERO, i))
 
-        # 4. Comprar
+        # R3 reemplazar
+        self.reglas_evaluadas += 1
+        if j.banca and j.tablero and len(j.tablero) >= cap and len(j.banca) < cfg.tamano_banca:
+            mejor, mejor_p = None, poder_actual + 1e-9
+            for t in range(len(j.tablero)):
+                for u in j.banca:
+                    p = self._poder(env, jugador, j.tablero[:t] + j.tablero[t + 1:] + [u])
+                    if p > mejor_p:
+                        mejor, mejor_p = t, p
+            if mejor is not None:
+                return self._disparar("R3 reemplazar", Accion(TipoAccion.A_BANCA, mejor))
+
+        # R4 comprar
+        self.reglas_evaluadas += 1
         if len(j.banca) < cfg.tamano_banca:
-            copias = Counter(u.nombre for u in j.todas_las_unidades() if u.estrellas == 1)
-            mejor, mejor_p = None, -1.0
+            copias = Counter(u.clave() for u in j.banca)
+            nombres_tab: Dict[Any, set] = {}
+            for u in j.tablero:
+                nombres_tab.setdefault(u.elemento, set()).add(u.nombre)
+            hay_hueco = len(j.tablero) < cap and not j.banca
+            mejor, mejor_p = None, float("-inf")
             for i, n in enumerate(j.tienda):
-                if n is None or CATALOGO[n].costo > j.oro:
+                if n is None or CATALOGO[n].coste > j.oro:
                     continue
-                completa = copias[n] + 1 >= COPIAS_PARA_COMBINAR
-                hay_hueco = len(j.tablero) < cap and not j.banca
-                if (j.oro - CATALOGO[n].costo < self.perfil.reserva
+                completa = copias[(n, 1)] + 1 >= COPIAS_PARA_COMBINAR
+                if (j.oro - CATALOGO[n].coste < self.perfil.reserva
                         and not completa and not hay_hueco):
                     continue
-                p = self._puntaje(env, jugador, n) + self.perfil.prioridad_copias * copias[n]
+                nueva = Unidad(-1, n, 1)
+                if len(j.tablero) < cap:
+                    aporte = self._poder(env, jugador, j.tablero + [nueva]) - poder_actual
+                else:
+                    aporte = max(self._poder(env, jugador,
+                                             j.tablero[:t] + j.tablero[t + 1:] + [nueva])
+                                 for t in range(len(j.tablero))) - poder_actual
+                variedad = (nueva.elemento in nombres_tab
+                            and n not in nombres_tab[nueva.elemento])
+                p = (aporte + self.perfil.peso_copias * copias[(n, 1)]
+                     + self.perfil.peso_variedad * variedad + 0.1 * CATALOGO[n].poder(1))
                 if p > mejor_p:
                     mejor, mejor_p = i, p
             if mejor is not None:
-                return self._regla("comprar", Accion(TipoAccion.COMPRAR, mejor))
+                return self._disparar("R4 comprar", Accion(TipoAccion.COMPRAR, mejor))
 
-        # 5. Renovar
+        # R5 renovar
+        self.reglas_evaluadas += 1
         if (self._renovaciones < self.perfil.max_renovaciones
-                and j.oro - cfg.costo_renovar >= self.perfil.renovar_si_oro):
+                and len(j.banca) < cfg.tamano_banca
+                and j.oro - cfg.coste_renovar >= self.perfil.renovar_si_oro):
             self._renovaciones += 1
-            return self._regla("renovar", Accion(TipoAccion.RENOVAR))
+            return self._disparar("R5 renovar", Accion(TipoAccion.RENOVAR))
 
-        # 6. Terminar
-        return self._regla("terminar", Accion(TipoAccion.TERMINAR))
-
-    def _regla(self, nombre: str, accion: Accion) -> Accion:
-        self.ultima_regla = nombre
-        return accion
+        # R6 terminar
+        self.reglas_evaluadas += 1
+        return self._disparar("R6 terminar", Accion(TipoAccion.TERMINAR))
 
     def lineas_estado(self) -> List[str]:
-        return [self.nombre, f"regla: {self.ultima_regla or '-'}",
+        return [self.nombre, f"regla: {self.ultima_regla}",
+                f"evaluadas: {self.reglas_evaluadas}",
+                f"disparadas: {self.reglas_disparadas}",
                 f"reserva: {self.perfil.reserva} oro",
                 f"renovaciones: {self._renovaciones}/{self.perfil.max_renovaciones}"]
 
-    def resumen(self) -> str:
-        return f"{self.nombre}: regla disparada = {self.ultima_regla}"
-
 
 class AgenteQLearning:
-    """Q-learning tabular sobre una representación simplificada.
+    """Q-learning tabular con estado simplificado.
 
-    * Estado abstracto: (fase de la partida, vidas propias, diferencia de
-      vidas, nivel de oro, ¿mi tablero es más fuerte que el rival?).
-    * Acciones (macro): elegir un perfil de ``PERFILES`` para toda la ronda,
-      que luego ejecuta un ``AgenteReglas``.
-    * Recompensa: la del ambiente (+1/-1 por ronda, +10/-10 al final).
-    * Actualización: Q(s,a) += alfa * (r + gamma * max_a' Q(s',a') - Q(s,a)).
+    * Estado: (etapa de la partida, vidas propias, diferencia de vidas,
+      nivel de oro, ¿mi tablero es más fuerte que el del rival?).
+    * Acciones: el *perfil* de juego para la ronda (agresivo, equilibrado,
+      ahorro, combos), que ejecuta ``AgenteHeuristico``.
+    * Recompensa: +1/-1 por ronda ganada/perdida, +10/-10 al final.
+    * Actualización: Q(s,a) <- Q(s,a) + alfa [r + gamma max Q(s',.) - Q(s,a)].
 
-    Con ``aprendiendo=True`` explora (epsilon-greedy) y actualiza la tabla;
-    con False solo explota lo aprendido.
+    Con ``aprendiendo=True`` explora (epsilon-greedy) y actualiza; con False
+    solo explota la tabla aprendida.
     """
 
+    nombre = "Q-learning"
     ACCIONES = list(PERFILES)
 
     def __init__(self, alfa: float = 0.1, gamma: float = 0.95,
                  epsilon: float = 0.1, aprendiendo: bool = False,
-                 semilla: Optional[int] = None,
-                 archivo: Optional[str] = None) -> None:
+                 semilla: Optional[int] = None, archivo: Optional[str] = None) -> None:
         self.alfa, self.gamma, self.epsilon = alfa, gamma, epsilon
         self.aprendiendo = aprendiendo
         self.rng = crear_rng(semilla)
         self.Q: Dict[str, List[float]] = {}
-        self.nombre = "Q-learning"
-        self.ejecutores = {p: AgenteReglas(p) for p in PERFILES}
+        self.ejecutores = {p: AgenteHeuristico(p) for p in PERFILES}
         if archivo and os.path.exists(archivo):
             self.cargar(archivo)
         self.reiniciar()
@@ -972,18 +633,16 @@ class AgenteQLearning:
         for e in self.ejecutores.values():
             e.reiniciar()
 
-    # ----- representación -----
     @staticmethod
     def estado_abstracto(env: MagicChessEnv, jugador: int) -> str:
-        yo = env.jugadores[jugador]
-        otro = env.jugadores[env.rival(jugador)]
-        fase = min(env.ronda // 4, 3)
+        yo, otro = env.jugadores[jugador], env.jugadores[env.rival(jugador)]
+        etapa = 0 if env.ronda <= 2 else (1 if env.ronda <= 4 else (2 if env.ronda <= 6 else 3))
         dif = max(-2, min(2, yo.vidas - otro.vidas))
-        oro = min(yo.oro // 10, 3)
+        oro = 0 if yo.oro < 3 else (1 if yo.oro < 6 else 2)
         mio = env.poder_equipo(jugador).total
         suyo = env.poder_equipo(env.rival(jugador)).total
         fuerza = 1 if mio > suyo * 1.1 else (-1 if mio < suyo * 0.9 else 0)
-        return f"{fase}|{min(yo.vidas, 5)}|{dif}|{oro}|{fuerza}"
+        return f"{etapa}|{yo.vidas}|{dif}|{oro}|{fuerza}"
 
     def _q(self, s: str) -> List[float]:
         return self.Q.setdefault(s, [0.0] * len(self.ACCIONES))
@@ -992,8 +651,7 @@ class AgenteQLearning:
         if self.aprendiendo and self.rng.random() < self.epsilon:
             return self.rng.randrange(len(self.ACCIONES))
         q = self._q(s)
-        mejor = max(q)
-        return self.rng.choice([i for i, v in enumerate(q) if v == mejor])
+        return self.rng.choice([i for i, v in enumerate(q) if v == max(q)])
 
     def _actualizar(self, r: float, s2: Optional[str]) -> None:
         if not self.aprendiendo or self._s is None:
@@ -1010,17 +668,16 @@ class AgenteQLearning:
         self._marcador = marcador
         return r
 
-    # ----- interfaz de agente -----
     def actuar(self, env: MagicChessEnv, jugador: int) -> Accion:
         if env.ronda != self._ronda:
             s = self.estado_abstracto(env, jugador)
             self._actualizar(self._recompensa_ronda(env, jugador), s)
-            self._ronda = env.ronda
-            self._s, self._a = s, self._elegir(s)
+            self._ronda, self._s = env.ronda, s
+            self._a = self._elegir(s)
         return self.ejecutores[self.ACCIONES[self._a]].actuar(env, jugador)
 
     def finalizar(self, env: MagicChessEnv, jugador: int) -> None:
-        """Llamar al terminar la partida para la última actualización."""
+        """Última actualización al terminar la partida."""
         r = self._recompensa_ronda(env, jugador)
         if env.ganador == jugador:
             r += MagicChessEnv.RECOMPENSA_PARTIDA
@@ -1030,33 +687,28 @@ class AgenteQLearning:
 
     def lineas_estado(self) -> List[str]:
         perfil = self.ACCIONES[self._a] if self._a is not None else "-"
-        lineas = ["Q-learning", f"s = {self._s or '-'}", f"perfil: {perfil}"]
+        lineas = [self.nombre, f"s = {self._s or '-'}", f"perfil: {perfil}"]
         if self._s is not None:
-            q = self._q(self._s)
-            lineas += [f"Q[{a[:5]}] = {v:+.2f}" for a, v in zip(self.ACCIONES, q)]
-        lineas.append(f"estados: {len(self.Q)}")
+            lineas += [f"Q[{a[:5]}] = {v:+.2f}" for a, v in zip(self.ACCIONES, self._q(self._s))]
         return lineas
 
-    def resumen(self) -> str:
-        perfil = self.ACCIONES[self._a] if self._a is not None else "-"
-        return f"Q-learning: estado {self._s} -> perfil '{perfil}' ({len(self.Q)} estados)"
-
-    # ----- persistencia -----
     def guardar(self, archivo: str) -> None:
         with open(archivo, "w", encoding="utf-8") as f:
             json.dump({"acciones": self.ACCIONES, "Q": self.Q}, f, indent=1)
 
     def cargar(self, archivo: str) -> None:
         with open(archivo, encoding="utf-8") as f:
-            self.Q = json.load(f)["Q"]
+            datos = json.load(f)
+        if datos.get("acciones") == self.ACCIONES:
+            self.Q = datos["Q"]
 
 
 # ===========================================================================
 # 4. Experimentos
 # ===========================================================================
 def jugar_partida(env: MagicChessEnv, agentes: List[Any]) -> MagicChessEnv:
-    """Juega una partida completa (cada jugador termina su turno por
-    completo, luego el otro) y devuelve el ambiente final."""
+    """Juega una partida completa (cada jugador termina su turno y luego el
+    otro)."""
     for a in agentes:
         if hasattr(a, "reiniciar"):
             a.reiniciar()
@@ -1070,18 +722,63 @@ def jugar_partida(env: MagicChessEnv, agentes: List[Any]) -> MagicChessEnv:
     return env
 
 
+def comparar_algoritmos(env: MagicChessEnv, jugador: int,
+                        pesos: Optional[PesosEvaluacion] = None
+                        ) -> List[Dict[str, Any]]:
+    """Los tres algoritmos deciden el MISMO turno (cada uno sobre un clon).
+
+    Se mide la utilidad V del estado en que cada uno termina el turno, si
+    alcanzó el óptimo (el V del backtracking), tiempo, acciones y nodos /
+    reglas. RENOVAR se trata como terminar en esta comparación (cambiaría
+    la instancia al azar), para que los tres resuelvan el mismo problema."""
+    agentes = {"Backtracking": AgenteBacktracking(pesos, max_renovaciones=0),
+               "Heurística": AgenteHeuristico("equilibrado"),
+               "Q-learning": FABRICAS["Q-learning"]()}
+    filas = []
+    referencia = None
+    for nombre, agente in agentes.items():
+        copia = env.clonar()
+        agente.reiniciar()
+        acciones: List[str] = []
+        with Cronometro() as c:
+            while True:
+                a = agente.actuar(copia, jugador)
+                if a.tipo in (TipoAccion.RENOVAR, TipoAccion.TERMINAR):
+                    acciones.append("terminar")
+                    break
+                copia.step(jugador, a)
+                acciones.append(str(a))
+        v = valor_estado_real(copia, jugador, pesos)
+        fila = {"algoritmo": nombre, "valor_V": round(v, 3),
+                "poder_tablero": round(copia.poder_equipo(jugador).total, 3),
+                "tiempo_s": c.segundos, "longitud_solucion": len(acciones),
+                "plan": " > ".join(acciones)}
+        if isinstance(agente, AgenteBacktracking):
+            m = agente.ultimo_resultado.metricas
+            fila.update(nodos_generados=m.nodos_generados,
+                        nodos_expandidos=m.nodos_expandidos,
+                        max_frontera=m.max_frontera)
+            referencia = v
+        if isinstance(agente, AgenteHeuristico):
+            fila.update(reglas_evaluadas=agente.reglas_evaluadas,
+                        reglas_disparadas=agente.reglas_disparadas)
+        filas.append(fila)
+    for f in filas:
+        f["es_optima"] = f["valor_V"] >= round(referencia, 3) - 1e-6
+        f["encontro_solucion"] = True
+    return filas
+
+
 def torneo(fabrica_a: Callable[[], Any], fabrica_b: Callable[[], Any],
            partidas: int = 50, dificultad: str = "normal",
            semilla: int = 0) -> Dict[str, Any]:
-    """Enfrenta dos agentes ``partidas`` veces alternando el asiento.
-
-    Devuelve métricas de A: % de victorias, % de empates, rondas promedio,
-    vidas restantes promedio, aprovechamiento del oro (gastado / ganado) y
-    tiempo promedio de decisión cuando el agente es de búsqueda.
-    """
+    """Partidas entre A y B alternando asiento. Métricas de A: % victorias,
+    % empates, rondas promedio, vidas restantes, uso del oro y tiempo de
+    decisión (si es backtracking)."""
     a, b = fabrica_a(), fabrica_b()
     gan = emp = 0
     rondas = vidas = uso_oro = 0.0
+    tiempos: List[float] = []
     for k in range(partidas):
         asiento = k % 2
         agentes = [a, b] if asiento == 0 else [b, a]
@@ -1094,65 +791,32 @@ def torneo(fabrica_a: Callable[[], Any], fabrica_b: Callable[[], Any],
         rondas += env.ronda
         vidas += yo.vidas
         uso_oro += yo.oro_gastado / max(1, yo.oro_ganado)
-    res = {
-        "agente": getattr(a, "nombre", type(a).__name__),
-        "rival": getattr(b, "nombre", type(b).__name__),
-        "partidas": partidas,
-        "victorias_%": 100 * gan / partidas,
-        "empates_%": 100 * emp / partidas,
-        "rondas_prom": rondas / partidas,
-        "vidas_prom": vidas / partidas,
-        "uso_oro_%": 100 * uso_oro / partidas,
-    }
-    hist = getattr(a, "historial_metricas", None)
-    if hist:
-        res["tiempo_decision_ms"] = 1000 * sum(m.tiempo_s for m in hist) / len(hist)
-        res["expandidos_prom"] = sum(m.nodos_expandidos for m in hist) / len(hist)
+        tiempos += [m.tiempo_s for m in getattr(a, "historial_metricas", [])]
+    res = {"agente": getattr(a, "nombre", "A"), "rival": getattr(b, "nombre", "B"),
+           "partidas": partidas, "victorias_%": 100 * gan / partidas,
+           "empates_%": 100 * emp / partidas, "rondas_prom": rondas / partidas,
+           "vidas_prom": vidas / partidas, "uso_oro_%": 100 * uso_oro / partidas}
+    if tiempos:
+        res["tiempo_decision_ms"] = 1000 * sum(tiempos) / len(tiempos)
     return res
 
 
-def comparar_busquedas(env: MagicChessEnv, jugador: int,
-                       pesos: Optional[PesosEvaluacion] = None,
-                       algoritmos: Optional[List[str]] = None
-                       ) -> List[Dict[str, Any]]:
-    """Ejecuta los algoritmos sobre la MISMA instancia y compara.
-
-    Toma como referencia el mejor V hallado por un algoritmo que haya
-    certificado optimalidad (BFS completo o A*), y marca cada resultado como
-    óptimo o no comparando su V contra esa referencia.
-    """
-    nombres = algoritmos or list(ALGORITMOS)
-    resultados = {n: ALGORITMOS[n](ProblemaTurno(env, jugador, pesos)) for n in nombres}
-    certificados = [r.valor for r in resultados.values() if r.metricas.es_optima]
-    referencia = max(certificados) if certificados else max(r.valor for r in resultados.values())
-    filas = []
-    for n, r in resultados.items():
-        fila = r.metricas.como_dict()
-        fila.pop("extra", None)
-        fila["algoritmo"] = n
-        fila["valor_V"] = round(r.valor, 3)
-        fila["es_optima"] = abs(r.valor - referencia) < 1e-6
-        fila["plan"] = " > ".join(t if a is None else f"{t}({a})" for t, a in r.plan)
-        filas.append(fila)
-    return filas
-
-
-def entrenar_qlearning(episodios: int = 2000, archivo: str = "qtabla.json",
+def entrenar_qlearning(episodios: int = 3000, archivo: Optional[str] = None,
                        dificultad: str = "normal", semilla: int = 0,
                        epsilon_inicial: float = 0.3, epsilon_final: float = 0.02,
                        cada: int = 500) -> AgenteQLearning:
-    """Entrena Q-learning contra una mezcla de rivales (reglas con perfiles
-    distintos y aleatorio), con epsilon decreciente. Guarda la tabla en
-    ``archivo``."""
+    """Entrena contra una mezcla de rivales (heurística con varios perfiles
+    y backtracking) con epsilon decreciente, y guarda la tabla Q."""
     agente = AgenteQLearning(aprendiendo=True, semilla=semilla)
-    rivales = [AgenteReglas("equilibrado"), AgenteReglas("agresivo"),
-               AgenteReglas("ahorro"), AgenteAleatorio(semilla=semilla)]
+    rivales = [AgenteHeuristico("equilibrado"), AgenteHeuristico("agresivo"),
+               AgenteHeuristico("ahorro"), AgenteBacktracking()]
     rng = crear_rng(semilla)
     victorias = 0
     for ep in range(episodios):
-        agente.epsilon = epsilon_inicial + (epsilon_final - epsilon_inicial) * ep / max(1, episodios - 1)
-        rival = rng.choice(rivales)
+        agente.epsilon = (epsilon_inicial
+                          + (epsilon_final - epsilon_inicial) * ep / max(1, episodios - 1))
         asiento = ep % 2
+        rival = rng.choice(rivales)
         agentes = [agente, rival] if asiento == 0 else [rival, agente]
         env = MagicChessEnv(ConfiguracionJuego.desde_dificultad(dificultad),
                             semilla=semilla + ep)
@@ -1163,69 +827,65 @@ def entrenar_qlearning(episodios: int = 2000, archivo: str = "qtabla.json",
                   f"(eps={agente.epsilon:.3f}, estados={len(agente.Q)})")
             victorias = 0
     agente.aprendiendo = False
-    agente.guardar(archivo)
+    agente.guardar(archivo or RUTA_QTABLA)
     return agente
 
 
 # ===========================================================================
-# 5. Fábricas para la GUI
+# 5. Fábricas (las usa la GUI para el selector de algoritmo)
 # ===========================================================================
 RUTA_QTABLA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qtabla.json")
 
 FABRICAS: Dict[str, Callable[[], Any]] = {
-    "Reglas": lambda: AgenteReglas("equilibrado"),
-    "BFS": lambda: AgenteBusqueda("BFS"),
-    "DLS": lambda: AgenteBusqueda("DLS"),
-    "A*h1": lambda: AgenteBusqueda("A*h1"),
-    "A*h2": lambda: AgenteBusqueda("A*h2"),
-    "Voraz": lambda: AgenteBusqueda("Voraz"),
+    "Heurística": lambda: AgenteHeuristico("equilibrado"),
+    "Backtracking": lambda: AgenteBacktracking(),
     "Q-learning": lambda: AgenteQLearning(archivo=RUTA_QTABLA),
 }
 
 
 def _imprimir_tabla(filas: List[Dict[str, Any]], columnas: List[str]) -> None:
-    anchos = {c: max(len(c), *(len(_fmt(f.get(c))) for f in filas)) for c in columnas}
+    def fmt(v):
+        if v is None:
+            return "-"
+        if isinstance(v, float):
+            return f"{v:.4f}" if abs(v) < 1 else f"{v:.2f}"
+        return str(v)
+    anchos = {c: max(len(c), *(len(fmt(f.get(c))) for f in filas)) for c in columnas}
     print("  ".join(c.ljust(anchos[c]) for c in columnas))
     for f in filas:
-        print("  ".join(_fmt(f.get(c)).ljust(anchos[c]) for c in columnas))
-
-
-def _fmt(v) -> str:
-    if isinstance(v, float):
-        return f"{v:.4f}" if abs(v) < 1 else f"{v:.2f}"
-    return str(v)
+        print("  ".join(fmt(f.get(c)).ljust(anchos[c]) for c in columnas))
 
 
 if __name__ == "__main__":
     modo = sys.argv[1] if len(sys.argv) > 1 else "comparar"
 
     if modo == "comparar":
-        # Instancia de ejemplo: ronda 6 con unidades y oro a mitad de partida.
+        # Instancia de ejemplo: ronda 5 (tablero de 4), 7 de oro.
         env = MagicChessEnv(ConfiguracionJuego(), semilla=3)
-        env.fijar_ronda(6)
-        env.fijar_oro(0, 14)
-        for n, e, z in [("Gota", 1, "tablero"), ("Gota", 1, "banca"),
-                        ("Chispa", 2, "tablero"), ("Brote", 1, "banca")]:
-            env.agregar_unidad(0, n, e, z)
-        for n, z in [("Brasa", "tablero"), ("Ent", "tablero"), ("Brote", "tablero")]:
+        env.fijar_ronda(5)
+        env.fijar_oro(0, 7)
+        for n, nv, z in [("Gota", 1, "tablero"), ("Chispa", 2, "tablero"),
+                         ("Gota", 1, "banca"), ("Brote", 1, "banca")]:
+            env.agregar_unidad(0, n, nv, z)
+        for n, z in [("Brasa", "tablero"), ("Ent", "tablero"), ("Musgo", "tablero")]:
             env.agregar_unidad(1, n, 1, z)
-        env.fijar_tienda(0, ["Gota", "Marea", "Espino"])
-        filas = comparar_busquedas(env, 0)
-        _imprimir_tabla(filas, ["algoritmo", "valor_V", "es_optima", "tiempo_s",
-                                "nodos_generados", "nodos_expandidos",
-                                "max_frontera", "longitud_solucion"])
-        print("\nPlan óptimo (A*h2):",
-              next(f["plan"] for f in filas if f["algoritmo"] == "A*h2"))
+        env.fijar_tienda(0, ["Burbuja", "Marea", "Espino"])
+        filas = comparar_algoritmos(env, 0)
+        _imprimir_tabla(filas, ["algoritmo", "valor_V", "poder_tablero", "es_optima",
+                                "tiempo_s", "nodos_generados", "nodos_expandidos",
+                                "max_frontera", "reglas_evaluadas", "longitud_solucion"])
+        for f in filas:
+            print(f"\n{f['algoritmo']}: {f['plan']}")
 
     elif modo == "torneo":
-        n = int(sys.argv[2]) if len(sys.argv) > 2 else 20
-        filas = [torneo(FABRICAS[k], FABRICAS["Reglas"], partidas=n)
-                 for k in FABRICAS]
+        n = int(sys.argv[2]) if len(sys.argv) > 2 else 30
+        filas = [torneo(FABRICAS[a], FABRICAS[b], partidas=n)
+                 for a in FABRICAS for b in FABRICAS if a != b]
         _imprimir_tabla(filas, ["agente", "rival", "victorias_%", "empates_%",
                                 "rondas_prom", "vidas_prom", "uso_oro_%",
                                 "tiempo_decision_ms"])
 
     elif modo == "entrenar":
-        n = int(sys.argv[2]) if len(sys.argv) > 2 else 2000
-        entrenar_qlearning(n, RUTA_QTABLA)
+        n = int(sys.argv[2]) if len(sys.argv) > 2 else 3000
+        entrenar_qlearning(n)
         print(f"Tabla Q guardada en {RUTA_QTABLA}")
